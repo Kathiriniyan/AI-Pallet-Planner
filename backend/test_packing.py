@@ -4,7 +4,9 @@ from packer.engine import run_packing
 MOCK_CATALOG = {
     "HEAVY_STURDY": {"dimsCm": {"L": 50, "W": 50, "H": 50}, "fragility": 5, "maxLoadTopKg": 100, "allowRotate": "flat"},
     "FRAGILE_LIGHT": {"dimsCm": {"L": 50, "W": 50, "H": 25}, "fragility": 1, "maxLoadTopKg": 10, "allowRotate": "flat"},
-    "MEDIUM": {"dimsCm": {"L": 50, "W": 50, "H": 50}, "fragility": 3, "maxLoadTopKg": 40, "allowRotate": "flat"},
+    "MEDIUM": {"dimsCm": {"L": 50, "W": 50, "H": 50}, "fragility": 3, "maxLoadTopKg": 40, "allowRotate": "flat"}
+}
+
 # Mock container and boxes
 CONTAINER = {
     "lengthCm": 100,
