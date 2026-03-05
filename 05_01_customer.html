@@ -1,0 +1,1386 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Customer Details - DN-00045 (Updated)</title>
+
+<!-- Tailwind (Play CDN) -->
+<script src="https://cdn.tailwindcss.com"></script>
+<!-- Font Awesome -->
+<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet">
+<!-- SortableJS (mobile-only drag via long-press on Status) -->
+<script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
+
+<style>
+  .toast-enter { transform: translateY(-6px); opacity: 0; }
+  .toast-enter-active { transform: translateY(0); opacity: 1; transition: all .2s ease; }
+  .modal-show { display: flex !important; }
+  .hidden-important { display: none !important; }
+
+  .drag-row { cursor: grab; }
+  .drag-row:active { cursor: grabbing; }
+  .drag-handle { display:none; }
+  @media (min-width:640px){
+    .drag-handle{
+      display:inline-flex;align-items:center;justify-content:center;width:1.75rem;height:1.75rem;border-radius:.375rem;color:#6b7280
+    }
+    .drag-handle:hover{color:#dc2626}
+  }
+  tr.dragging { opacity: .6; }
+  tr.drop-before { box-shadow: inset 0 2px 0 0 rgba(220,38,38,.85); }
+  tr.drop-after  { box-shadow: inset 0 -2px 0 0 rgba(220,38,38,.85); }
+
+  .sortable-chosen { opacity: .95; }
+  .sortable-ghost   { opacity: .6; background: rgba(239,68,68,.08); }
+
+  .reordering * { -webkit-user-select: none !important; user-select: none !important; -webkit-touch-callout: none !important; }
+  #tblBody.reorder-active { touch-action: none; }
+
+  @media (max-width: 639.98px) {
+    table.mobile-compact { table-layout: fixed; width: 100%; }
+    table.mobile-compact col.col-qty,
+    table.mobile-compact th.mob-qty,
+    table.mobile-compact td.mob-qty { width: 176px; }
+    table.mobile-compact col.col-status,
+    table.mobile-compact th.mob-status,
+    table.mobile-compact td.mob-status { width: 64px; }
+    table.mobile-compact td.cell-name .name-text {
+      display: block; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+    }
+    table.mobile-compact td.mob-qty .ctrl { width: 28px; height: 28px; }
+    table.mobile-compact td.mob-qty input[type="number"] { width: 64px; }
+    table.mobile-compact td.mob-qty .mobPickedWrap,
+    table.mobile-compact td.mob-qty .mobAdditionalWrap { gap: .25rem; justify-content: center; }
+    table.mobile-compact th, table.mobile-compact td { padding: 0.75rem; }
+  }
+</style>
+</head>
+
+<body class="bg-gradient-to-b from-indigo-50/60 to-white min-h-screen">
+<div class="max-w-7xl mx-auto px-4 py-6">
+
+  <div id="flashArea" class="space-y-2 mb-4 hidden"></div>
+
+  <!-- Top bar -->
+  <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-5">
+    <div class="text-sm text-gray-400">
+      <a href="#" class="hover:text-red-600 transition">Pick List</a>
+      <span class="mx-1">/</span>
+      <span id="crumbDN" class="font-semibold text-gray-700">DN-00045</span>
+    </div>
+
+    <div class="flex items-center gap-2">
+      <button type="button" class="px-3 py-2 rounded-lg bg-gray-100 hover:bg-gray-200 text-sm"
+        onclick="downloadPDF('Delivery Note',SERVER.deliveryNote,'sukan-cmr-custom')">
+        <i class="fas fa-print mr-1"></i> Print
+      </button>
+      <button type="button" id="finalizedPill"
+        class="px-3 py-2 rounded-lg bg-green-500/60 text-white text-sm hidden-important" disabled>
+        Already Finalized
+      </button>
+      <button id="finalizeBtn" type="button"
+        class="px-4 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-white text-sm">
+        Finalize
+      </button>
+    </div>
+  </div>
+
+  <!-- Customer header card -->
+  <div class="backdrop-blur-lg bg-white/70 shadow-xl rounded-2xl p-6 mb-6 border border-white/20 text-sm">
+    <h2 class="text-xl font-bold text-red-600 mb-4 hidden sm:block">Customer Details</h2>
+
+    <!-- Mobile-only customer toggle -->
+    <button type="button" id="custToggle"
+      class="sm:hidden w-full flex items-center justify-between rounded-xl border border-gray-200 bg-white px-4 py-3">
+      <span class="font-semibold text-gray-800">
+        Customer: <span id="hdrCustomer">Acme Foods BV</span>
+      </span>
+      <svg id="custChevron" class="w-4 h-4 transition-transform" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 9l6 6 6-6"/>
+      </svg>
+    </button>
+
+    <div id="custDetails" class="hidden sm:grid grid-cols-2 md:grid-cols-4 gap-4 mt-3 sm:mt-0">
+      <p class="hidden sm:block"><strong>Customer:</strong> <span id="hdrCustomer_dup">Acme Foods BV</span></p>
+      <p><strong>Sales Order ID:</strong> <span id="hdrSO">No Sales Order Linked</span></p>
+      <p><strong>Pick List ID:</strong> <span id="hdrDN">DN-00045</span></p>
+      <p><strong>Total Quantity:</strong> <span id="hdrTotalQty">0</span></p>
+      <p><strong>Total Net Weight:</strong> <span id="hdrTotalNW">0</span></p>
+      <p>
+        <strong>Status:</strong>
+        <span id="hdrStatusBadge"
+          class="inline-block px-2 py-0.5 rounded-md text-xs font-semibold text-white">Pending</span>
+      </p>
+      <p><strong>Picking Date:</strong> <span id="hdrDate">2025-09-20</span></p>
+    </div>
+  </div>
+
+  <!-- ========== Packing Automation (picked items only) ========== -->
+  <div class="backdrop-blur-lg bg-white/80 shadow-xl rounded-2xl p-6 mb-6 border border-white/20" id="packingCard">
+    <h2 class="text-xl font-bold text-red-600 mb-4 hidden sm:block">Packing Automation (Picked Items)</h2>
+
+    <div class="grid grid-cols-2 sm:grid-cols-8 gap-3 mt-4 text-sm">
+      <div>
+        <label class="block text-gray-600 mb-1">Container Length (ft)</label>
+        <input id="contLenFt" type="number" step="0.1" value="4" class="w-full border rounded-md px-3 py-2">
+      </div>
+      <div>
+        <label class="block text-gray-600 mb-1">Container Width (ft)</label>
+        <input id="contWidFt" type="number" step="0.1" value="6" class="w-full border rounded-md px-3 py-2">
+      </div>
+      <div>
+        <label class="block text-gray-600 mb-1">Container Height (ft)</label>
+        <input id="contHeiFt" type="number" step="0.1" value="4" class="w-full border rounded-md px-3 py-2">
+      </div>
+      <div>
+        <label class="block text-gray-600 mb-1">Type</label>
+        <select id="contType" class="w-full border rounded-md px-3 py-2">
+          <option value="pallet">Pallet</option>
+          <option value="box">Box / Carton</option>
+        </select>
+      </div>
+      <div>
+        <label class="block text-gray-600 mb-1">Max Layers (optional)</label>
+        <input id="maxLayers" type="number" min="1" class="w-full border rounded-md px-3 py-2" placeholder="auto">
+      </div>
+      <div>
+        <label class="block text-gray-600 mb-1">Orientation</label>
+        <select id="orientPolicy" class="w-full border rounded-md px-3 py-2" title="Allow rotations per box">
+          <option value="flat">Flat only (L×W base)</option>
+          <option value="all6" selected>All rotations (6)</option>
+        </select>
+      </div>
+      <div>
+        <label class="block text-gray-600 mb-1">Pack Direction</label>
+        <select id="packAlign" class="w-full border rounded-md px-3 py-2" title="Start from left or right edge">
+          <option value="LR" selected>Left → Right</option>
+          <option value="RL">Right → Left</option>
+        </select>
+      </div>
+      <div class="flex items-end">
+        <button id="btnPack" type="button" class="w-full bg-red-600 hover:bg-red-700 text-white rounded-md px-4 py-2">
+          <i class="fa-solid fa-cubes mr-1"></i> Packing Plan
+        </button>
+      </div>
+    </div>
+
+    <div id="packingOutput" class="mt-5 text-sm"></div>
+
+    <div id="packingActions" class="mt-4 hidden">
+      <button id="btnDownloadPlan" class="px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded-md text-sm">
+        <i class="fa-solid fa-download mr-2"></i>Download Plan JSON
+      </button>
+      <button id="btnPrintPlan" class="px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded-md text-sm">
+        <i class="fa-solid fa-print mr-2"></i>Print Plan
+      </button>
+      <button id="btnView3D" class="px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded-md text-sm">
+        <i class="fa-solid fa-cube mr-2"></i>View 3D Model
+      </button>
+    </div>
+  </div>
+  <!-- /Packing Automation -->
+
+  <!-- FORM -->
+  <form id="detailsForm" name="customerDetailsForm" class="space-y-0" data-order-id="DN-00045">
+
+    <!-- Toolbar: Sort by Weight -->
+    <div class="flex items-center justify-end mb-2">
+      <button id="btnSort" type="button"
+        class="flex items-center gap-2 px-3 py-2 min-h-[40px] rounded-lg bg-red-600 text-white hover:bg-red-700 text-sm"
+        title="Weight: High→Low">
+        <svg xmlns="http://www.w3.org/2000/svg" id="sortIcon"
+          class="h-4 w-4 transform transition-transform rotate-0"
+          fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M8 9l4-4 4 4m0 6l-4 4-4-4" />
+        </svg>
+        Weight
+      </button>
+    </div>
+
+    <div class="overflow-x-auto backdrop-blur-lg bg-white/60 rounded-2xl shadow-lg border border-white/20 pb-6">
+      <table class="mobile-compact min-w-full text-sm md:text-base table-auto">
+        <colgroup class="sm:hidden">
+          <col class="col-name"><col class="col-qty"><col class="col-status">
+        </colgroup>
+        <thead class="bg-indigo-100/70">
+          <tr class="sm:hidden">
+            <th class="p-3 text-left font-semibold rounded-tl-lg">Product</th>
+            <th class="mob-qty p-3 text-center font-semibold">Quantity</th>
+            <th class="mob-status p-3 text-center font-semibold rounded-tr-lg">Status</th>
+          </tr>
+          <tr class="hidden sm:table-row">
+            <th class="p-3 text-center font-semibold rounded-tl-lg w-8"> </th>
+            <th class="p-3 text-left font-semibold">Product</th>
+            <th class="p-3 text-center font-semibold">Country</th>
+            <th class="p-3 text-center font-semibold">Picked Quantity</th>
+            <th class="p-3 text-center font-semibold">Required Quantity</th>
+            <th class="p-3 text-center font-semibold">Additional Quantity</th>
+            <th class="p-3 text-center font-semibold">Total Quantity</th>
+            <th class="p-3 text-center font-semibold">Weight/Unit (kg)</th>
+            <th class="p-3 text-center font-semibold rounded-tr-lg">Status</th>
+          </tr>
+        </thead>
+        <tbody id="tblBody"></tbody>
+      </table>
+    </div>
+  </form>
+
+  <!-- Product table pagination (10 per page) -->
+  <div id="productPager" class="flex flex-wrap gap-2 justify-center sm:justify-between items-center mt-4 text-sm">
+    <button id="prodPrev" class="px-3 py-1.5 rounded-lg bg-red-600 text-white disabled:opacity-40 hover:bg-red-700 transition">Prev</button>
+    <div id="prodPageNumbers" class="flex flex-wrap justify-center gap-1"></div>
+    <button id="prodNext" class="px-3 py-1.5 rounded-lg bg-red-600 text-white disabled:opacity-40 hover:bg-red-700 transition">Next</button>
+  </div>
+
+  <div id="finalizedNotice"
+    class="mt-6 bg-yellow-100 border border-yellow-300 text-yellow-900 rounded-xl px-4 py-3 text-center font-medium hidden">
+    This document has been finalized. No further editing is allowed.
+  </div>
+</div>
+
+<!-- Toasts -->
+<div id="toastStack" class="fixed top-4 right-4 z-50 space-y-2"></div>
+
+<!-- Image modal -->
+<div id="imgModal" class="fixed inset-0 hidden items-center justify-center bg-black/70 z-50 p-4">
+  <img id="imgModalEl" class="max-w-[90vw] max-height-[90vh] rounded-lg shadow-2xl object-contain" />
+</div>
+
+<!-- Status modal -->
+<div id="statusModal" class="fixed inset-0 hidden items-center justify-center bg-black/40 z-50 p-4">
+  <div class="bg-white rounded-xl p-6 shadow-lg max-w-md w-full relative">
+    <button type="button" class="absolute top-3 right-4 text-gray-500 text-xl hover:text-red-500"
+      onclick="closeStatusModal()">×</button>
+
+    <h2 class="text-lg font-semibold text-gray-800 mb-4">Update Status</h2>
+
+    <div class="flex items-center gap-4 mb-4">
+      <img id="statusImg" class="w-20 h-20 rounded-lg border border-gray-300 object-contain" alt="">
+      <div class="min-w-0">
+        <div class="font-medium text-gray-800 truncate" id="statusName"></div>
+        <div class="text-gray-500 text-sm">Origin: <span id="statusCountry"></span></div>
+      </div>
+    </div>
+
+    <label class="block text-sm font-medium text-gray-700 mb-1">Status</label>
+    <select id="statusSelect" class="w-full rounded-md border border-gray-300 px-3 py-2">
+      <option value="">Select Item Status</option>
+      <option value="Item not available">Item not available</option>
+      <option value="Waiting for Shipment">Waiting for Shipment</option>
+    </select>
+
+    <div class="flex justify-end mt-5">
+      <button id="statusSaveBtn" type="button" class="bg-red-600 text-white px-6 py-2 rounded-md" onclick="saveStatusModal()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Mobile product modal -->
+<div id="mobileModal" class="fixed inset-0 hidden items-center justify-center bg-black/40 z-50 p-4 sm:hidden">
+  <div class="bg-white rounded-xl p-6 shadow-lg w-full max-w-md relative">
+    <button type="button" class="absolute top-3 right-4 text-gray-500 text-xl hover:text-red-500" onclick="closeMobileModal()">×</button>
+
+    <h2 class="text-lg font-semibold text-gray-800 mb-4">Product Details</h2>
+
+    <div class="flex items-center gap-4 mb-4">
+      <img id="mImg" class="w-20 h-20 rounded-lg border border-gray-300 object-contain" alt="">
+      <div class="min-w-0">
+        <div class="font-medium text-gray-800 truncate" id="mName"></div>
+        <div class="text-gray-500 text-sm">Origin: <span id="mCountry"></span></div>
+      </div>
+    </div>
+
+    <div class="mb-4">
+      <label class="block text-sm font-medium text-gray-700">Picked Quantity</label>
+      <div class="flex items-center gap-2 mt-1">
+        <button id="mMinus" class="w-12 h-10 rounded-lg bg-red-100 text-red-600 font-bold" onclick="mBumpPicked(-1)" type="button">−</button>
+        <input id="mPicked" type="number" min="0" class="w-full text-center border border-gray-300 rounded-md px-2 py-1" oninput="mTypedPicked(this.value)">
+        <button id="mPlus" class="w-12 h-10 rounded-lg bg-red-100 text-red-600 font-bold" onclick="mBumpPicked(1)" type="button">+</button>
+        <button id="mConfirm" class="w-12 h-10 rounded-lg flex items-center justify-center font-bold ml-2 bg-green-100 text-green-600" onclick="mConfirmPicked()" type="button">✓</button>
+      </div>
+    </div>
+
+    <div class="mb-4">
+      <label class="block text-sm font-medium text-gray-700">Additional Quantity</label>
+      <div class="flex items-center gap-2 mt-1">
+        <button id="mAddMinus" class="w-12 h-10 rounded-lg font-bold bg-gray-200 text-gray-400 cursor-not-allowed" onclick="mBumpAdditional(-1)" type="button" disabled>−</button>
+        <input id="mAdditional" type="number" min="0" class="w-full text-center rounded-md border border-gray-300 bg-gray-100 cursor-not-allowed px-2 py-1" oninput="mTypedAdditional(this.value)" disabled>
+        <button id="mAddPlus" class="w-12 h-10 rounded-lg font-bold bg-gray-200 text-gray-400 cursor-not-allowed" onclick="mBumpAdditional(1)" type="button" disabled>+</button>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-2 gap-3 text-sm">
+      <div>
+        <div class="text-gray-500">Required Qty</div>
+        <div id="mRequired" class="px-3 py-2 border border-gray-300 rounded-md bg-gray-100 text-center"></div>
+      </div>
+      <div>
+        <div class="text-gray-500">Total Qty</div>
+        <div id="mTotal" class="px-3 py-2 border border-gray-300 rounded-md bg-gray-100 text-center"></div>
+      </div>
+      <div>
+        <div class="text-gray-500">Weight / Unit</div>
+        <div id="mWPU" class="px-3 py-2 border border-gray-300 rounded-md bg-gray-100 text-center"></div>
+      </div>
+    </div>
+
+    <div class="mt-4">
+      <label class="block text-sm font-medium text-gray-700">Status</label>
+      <select id="mStatus" class="w-full rounded-md border border-gray-300 px-3 py-2" disabled>
+        <option value="">Select Item Status</option>
+        <option value="Item not available">Item not available</option>
+        <option value="Waiting for Shipment">Waiting for Shipment</option>
+      </select>
+    </div>
+
+    <div class="flex justify-end mt-5">
+      <button id="mSaveBtn" type="button" class="bg-red-600 text-white px-6 py-2 rounded-md" onclick="mSaveAndClose()">Save</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ------------------ Static “server” data ------------------ */
+const CATALOG_META = {
+  "ITM-JACK-BOX": { fragility: 3, dims: {L:60, W:40, H:35}, specialTop: false, img:null /*, allowedOrients:['LW','WL']*/ },
+  "ITM-TOM-BOX":  { fragility: 1, dims: {L:40, W:30, H:20}, specialTop: true,  img:null },
+  "ITM-OKRA-BOX": { fragility: 2, dims: {L:50, W:30, H:20}, specialTop: false, img:null },
+  "ITM-CUCU-BOX": { fragility: 2, dims: {L:50, W:35, H:20}, specialTop: false, img:null },
+  "ITM-CURRY-BOX":{ fragility: 1, dims: {L:40, W:30, H:15}, specialTop: true,  img:null },
+  "ITM-GRAP-BOX": { fragility: 1, dims: {L:40, W:30, H:15}, specialTop: true,  img:null },
+  "ITM-BANA-BOX": { fragility: 2, dims: {L:60, W:40, H:25}, specialTop: false, img:null },
+  "ITM-APPL-BOX": { fragility: 2, dims: {L:50, W:40, H:25}, specialTop: false, img:null },
+  "ITM-PUMP-BOX": { fragility: 3, dims: {L:60, W:40, H:40}, specialTop: false, img:null },
+  "ITM-WAT-BOX":  { fragility: 3, dims: {L:80, W:50, H:45}, specialTop: false, img:null /*, allowedOrients:['LW','WL']*/ },
+  "ITM-DRUM-BOX": { fragility: 2, dims: {L:60, W:30, H:20}, specialTop: false, img:null },
+  "ITM-CHIL-BOX": { fragility: 1, dims: {L:40, W:30, H:15}, specialTop: true,  img:null }
+};
+
+const SERVER = {
+  deliveryNote: "DN-00045",
+  isFinalized: false,
+  statusText: "Pending",
+  placeholder: "https://upload.wikimedia.org/wikipedia/commons/thumb/1/17/Vegetable_Market%2C_Pudupet%2C_Chennai.jpg/640px-Vegetable_Market%2C_Pudupet%2C_Chennai.jpg",
+  draft: null,
+  images: {
+    "ITM-JACK-BOX": "https://www.veganfoodandliving.com/wp-content/uploads/2023/05/Jackfruit-768x509.jpg",
+    "ITM-TOM-BOX":  "https://upload.wikimedia.org/wikipedia/commons/thumb/8/89/Tomato_je.jpg/480px-Tomato_je.jpg",
+    "ITM-OKRA-BOX": "https://5.imimg.com/data5/SELLER/Default/2021/1/JG/LP/FI/591899/lady-finger-1000x1000.jpg",
+    "ITM-CUCU-BOX": "https://www.highmowingseeds.com/media/catalog/product/cache/95cbc1bb565f689da055dd93b41e1c28/2/4/2425-0.jpg",
+    "ITM-CURRY-BOX":"https://estelletrading.com/wp-content/uploads/2024/08/Curry-Leaves.jpg",
+    "ITM-GRAP-BOX": "https://www.seriouseats.com/thmb/RaM1yOMH5r4WcBlaY09kNol9omI=/750x0/filters:no_upscale():max_bytes(150000):strip_icc():format(webp)/GettyImages-1289843973-karandaev-hero-ca6df1eb21504ba0965e2319ef4c26e3.jpg",
+    "ITM-BANA-BOX": "https://upload.wikimedia.org/wikipedia/commons/thumb/8/8a/Banana-Single.jpg/480px-Banana-Single.jpg",
+    "ITM-APPL-BOX": "https://upload.wikimedia.org/wikipedia/commons/thumb/1/15/Red_Apple.jpg/480px-Red_Apple.jpg",
+    "ITM-PUMP-BOX": "https://upload.wikimedia.org/wikipedia/commons/5/5c/FrenchMarketPumpkinsB.jpg",
+    "ITM-WAT-BOX":  "https://egmontseeds.co.nz/cdn/shop/files/58965WatermelonPeace_Yellow.jpg?v=1721889637&width=1920",
+    "ITM-DRUM-BOX": "https://m.media-amazon.com/images/I/61Dq32tHocL.jpg",
+    "ITM-CHIL-BOX": "https://www.simhas.in/image/cache/catalog/products/green-chilli-2-500x500.jpg"
+  },
+  products: [
+    {"Item Code":"ITM-JACK-BOX","Item Name":"Jackfruit Crate","Country of Origin":"India","Quantity":3,"Weight Per Unit":10,"Posting Date":"2025-09-20","Customer Name":"Acme Foods BV","Status":"Pending"},
+    {"Item Code":"ITM-PUMP-BOX","Item Name":"Pumpkin Box","Country of Origin":"Sri lanka","Quantity":4,"Weight Per Unit":12,"Posting Date":"2025-09-20","Customer Name":"Acme Foods BV","Status":"Pending"},
+    {"Item Code":"ITM-WAT-BOX","Item Name":"Watermelon Box","Country of Origin":"India","Quantity":2,"Weight Per Unit":15,"Posting Date":"2025-09-20","Customer Name":"Acme Foods BV","Status":"Pending"},
+    {"Item Code":"ITM-OKRA-BOX","Item Name":"Okra (Lady’s Finger) Box","Country of Origin":"Sri Lanka","Quantity":8,"Weight Per Unit":4,"Posting Date":"2025-09-20","Customer Name":"Acme Foods BV","Status":"Pending"},
+    {"Item Code":"ITM-CUCU-BOX","Item Name":"Cucumber Box","Country of Origin":"India","Quantity":6,"Weight Per Unit":6,"Posting Date":"2025-09-20","Customer Name":"Acme Foods BV","Status":"Pending"},
+    {"Item Code":"ITM-APPL-BOX","Item Name":"Apples Box","Country of Origin":"Canada","Quantity":5,"Weight Per Unit":8,"Posting Date":"2025-09-20","Customer Name":"Acme Foods BV","Status":"Pending"},
+    {"Item Code":"ITM-BANA-BOX","Item Name":"Banana Box","Country of Origin":"India","Quantity":6,"Weight Per Unit":7,"Posting Date":"2025-09-20","Customer Name":"Acme Foods BV","Status":"Pending"},
+    {"Item Code":"ITM-TOM-BOX","Item Name":"Tomato Box","Country of Origin":"Jaffna","Quantity":10,"Weight Per Unit":5,"Posting Date":"2025-09-20","Customer Name":"Acme Foods BV","Status":"Pending"},
+    {"Item Code":"ITM-GRAP-BOX","Item Name":"Grapes Box","Country of Origin":"India","Quantity":8,"Weight Per Unit":4,"Posting Date":"2025-09-20","Customer Name":"Acme Foods BV","Status":"Pending"},
+    {"Item Code":"ITM-CURRY-BOX","Item Name":"Curry Leaves Box","Country of Origin":"Jaffna","Quantity":6,"Weight Per Unit":2,"Posting Date":"2025-09-20","Customer Name":"Acme Foods BV","Status":"Pending"},
+    {"Item Code":"ITM-DRUM-BOX","Item Name":"Drumstick (Moringa) Box","Country of Origin":"India","Quantity":5,"Weight Per Unit":5,"Posting Date":"2025-09-20","Customer Name":"Acme Foods BV","Status":"Pending"},
+    {"Item Code":"ITM-CHIL-BOX","Item Name":"Green Chilli Box","Country of Origin":"India","Quantity":6,"Weight Per Unit":3,"Posting Date":"2025-09-20","Customer Name":"Acme Foods BV","Status":"Pending"}
+  ],
+  salesOrderRef: null 
+};
+
+/* Load draft from localStorage if exists */
+(function loadDraft(){
+  const key = `draft_${SERVER.deliveryNote}`;
+  try { const raw = localStorage.getItem(key); if (raw) SERVER.draft = JSON.parse(raw); } catch {}
+})();
+
+/* ------------------ Utils & State ------------------ */
+const $ = (sel, root=document) => root.querySelector(sel);
+const $$ = (sel, root=document) => Array.from(root.querySelectorAll(sel));
+const clamp = (n, min, max) => Math.max(min, Math.min(max, n));
+const sanitize = s => String(s||'').replace(/[\/\s]+/g, '_');
+const ftToCm = ft => (parseFloat(ft||0) || 0) * 30.48;
+
+let isReorderMode = false;
+let showAllRows   = false;
+let userOrderActive = false;
+let sortDir = 'desc';
+let prodCurrentPage = 1;
+const prodRowsPerPage = 10;
+
+let draggedUID = null;
+let mobileSortable = null;
+let suppressNextStatusClickForUID = null;
+
+/* Mobile customer toggle */
+(function setupCustomerToggle(){
+  const toggle = $('#custToggle'); if (!toggle) return;
+  const details = $('#custDetails'); const chev = $('#custChevron');
+  const syncNames = () => { const n = $('#hdrCustomer').textContent; $('#hdrCustomer_dup').textContent = n; };
+  syncNames();
+  toggle.addEventListener('click', () => { details.classList.toggle('hidden'); chev.classList.toggle('rotate-180'); });
+})();
+
+/* Toasts */
+function toast(msg, type='success') {
+  const stack = $('#toastStack');
+  const el = document.createElement('div');
+  el.className = `toast-enter px-4 py-3 rounded-lg shadow-lg text-sm ${type==='error'?'bg-red-600 text-white':'bg-green-600 text-white'}`;
+  el.textContent = msg; stack.appendChild(el);
+  requestAnimationFrame(() => el.classList.add('toast-enter-active'));
+  setTimeout(() => { el.classList.remove('toast-enter-active'); setTimeout(()=> el.remove(), 150); }, 1800);
+}
+
+/* Image modal */
+function openImageModal(img) {
+  const m = $('#imgModal'), el = $('#imgModalEl'); el.src = img.src || SERVER.placeholder; m.classList.add('modal-show');
+}
+$('#imgModal').addEventListener('click', () => $('#imgModal').classList.remove('modal-show'));
+
+/* ------------------ Build model ------------------ */
+function getDraft(key) {
+  if (!SERVER.draft) return undefined;
+  const v = SERVER.draft[key]; const val = Array.isArray(v) ? v[0] : v;
+  return (typeof val === 'string' || typeof val === 'number') ? val : undefined;
+}
+
+const MODEL = { items: [], byUID: new Map(), mobileUID: null };
+
+(function initModel() {
+  const first = SERVER.products[0] || {};
+  $('#crumbDN').textContent = SERVER.deliveryNote;
+  $('#hdrDN').textContent = SERVER.deliveryNote;
+  $('#hdrCustomer').textContent = first["Customer Name"] || "—";
+  $('#hdrSO').textContent = SERVER.salesOrderRef || "No Sales Order Linked";
+  $('#hdrDate').textContent = first["Posting Date"] || new Date().toISOString().slice(0,10);
+
+  const seen = new Map();
+  SERVER.products.forEach((d, idx) => {
+    const code = String(d["Item Code"] || `ROW_${idx}`);
+    const key = sanitize(code);
+    const name = d["Item Name"] || code;
+    const country = d["Country of Origin"] || "-";
+    const required = parseFloat(d["Quantity"] || 0) || 0;
+    const wpu = parseFloat(d["Weight Per Unit"] || 0) || 0;
+    const img = (SERVER.images && SERVER.images[code]) || SERVER.placeholder;
+    const meta = CATALOG_META[code] || { fragility: 2, dims: {L:50,W:40,H:25}, specialTop:false };
+
+    const seenCount = (seen.get(key) || 0); seen.set(key, seenCount + 1);
+    const uid = `${key}__${seenCount}`;
+
+    const picked = parseFloat(getDraft(`picked_quantity_${uid}`) ?? 0) || 0;
+    const additional = parseFloat(getDraft(`additional_quantity_${uid}`) ?? 0) || 0;
+    const status = String(getDraft(`item_status_${uid}`) ?? '') || '';
+
+    const obj = {
+      uid, code, name, country, img,
+      required, wpu, meta,
+      picked: clamp(picked, 0, required),
+      additional: Math.max(0, additional),
+      confirmed: picked > 0,
+      status
+    };
+
+    MODEL.items.push(obj);
+    MODEL.byUID.set(uid, obj);
+  });
+})();
+let ORIGINAL_ORDER = MODEL.items.slice();
+
+/* ------------------ Render table rows ------------------ */
+function rowHTML(item) {
+  const id = item.uid, idUS = sanitize(id);
+  const imgSrc = item.img || SERVER.placeholder;
+  const req = item.required, wpu = item.wpu;
+  const total = (item.picked + item.additional).toFixed(2);
+
+  return `
+  <tr class="border-b border-white/30 transition ${isReorderMode?'drag-row':''}" data-row data-uid="${id}" ${isReorderMode?'draggable="true"':''}>
+    <td class="p-3 text-center hidden sm:table-cell align-middle">
+      ${SERVER.isFinalized ? '' : `<button type="button" class="drag-handle" title="Drag to reorder" onmousedown="prepReorder()">&#8942;&#8942;</button>`}
+    </td>
+    <td class="cell-name p-3" onclick="rowClickOpenMobileModal(event, '${id.replace(/'/g,"\\'")}')">
+      <div class="flex items-center gap-3">
+        <img src="${imgSrc}" class="hidden sm:block w-16 h-16 rounded-lg object-contain border border-gray-300"
+             alt="Item" onclick="openImageModal(this); event.stopPropagation();">
+        <div class="min-w-0">
+          <div class="name-text font-semibold text-gray-800 truncate">${item.name}</div>
+          <div class="text-xs text-gray-500 sm:hidden">Box: ${item.meta?.dims?.L||'–'}×${item.meta?.dims?.W||'–'}×${item.meta?.dims?.H||'–'} cm</div>
+        </div>
+      </div>
+    </td>
+    <td class="p-3 text-center hidden sm:table-cell">${item.country}</td>
+    <td class="p-3 hidden sm:table-cell">
+      <div class="flex items-center justify-center gap-2">
+        <button type="button" class="w-8 h-8 rounded-md bg-red-100 text-red-600 font-bold"
+          onclick="bumpPicked('${id.replace(/'/g,"\\'")}', -1, event)">−</button>
+        <input type="number" min="0" step="any" class="w-16 text-center rounded-md border border-gray-300 px-2 py-1"
+          name="picked_quantity_${idUS}" value="${item.picked}"
+          oninput="typedPicked('${id.replace(/'/g,"\\'")}', this.value)" onclick="event.stopPropagation();">
+        <button type="button" class="w-8 h-8 rounded-md bg-red-100 text-red-600 font-bold"
+          onclick="bumpPicked('${id.replace(/'/g,"\\'")}', 1, event)">+</button>
+        <button type="button"
+          class="w-8 h-8 rounded-md flex items-center justify-center font-bold ${item.confirmed?'bg-green-400 text-white cursor-default':'bg-green-100 text-green-600 hover:bg-green-300'}"
+          title="${item.confirmed?'Confirmed':'Confirm Picked Quantity'}"
+          data-confirm ${item.confirmed?'disabled':''}
+          onclick="confirmPicked('${id.replace(/'/g,"\\'")}', event)">✓</button>
+      </div>
+    </td>
+    <td class="p-3 text-center hidden sm:table-cell">
+      <span data-required>${req}</span>
+      <input type="hidden" name="required_quantity_${idUS}" value="${req}">
+    </td>
+    <td class="p-3 hidden sm:table-cell">
+      <div class="flex items-center justify-center gap-2">
+        <button type="button" class="w-8 h-8 rounded-md font-bold ${item.confirmed?'bg-yellow-100 text-yellow-600':'bg-gray-200 text-gray-400'}"
+          data-add-minus ${item.confirmed?'':'disabled'}
+          onclick="bumpAdditional('${id.replace(/'/g,"\\'")}', -1, event)">−</button>
+        <input type="number" min="0" step="any"
+          class="w-16 text-center rounded-md border ${item.confirmed?'border-yellow-400':'border-gray-300 bg-gray-100 cursor-not-allowed'} px-2 py-1"
+          data-add-input name="additional_quantity_${idUS}" value="${item.additional}"
+          ${item.confirmed?'':'disabled'} onclick="event.stopPropagation();"
+          oninput="typedAdditional('${id.replace(/'/g,"\\'")}', this.value)">
+        <button type="button" class="w-8 h-8 rounded-md font-bold ${item.confirmed?'bg-yellow-100 text-yellow-600':'bg-gray-200 text-gray-400'}"
+          data-add-plus ${item.confirmed?'':'disabled'}
+          onclick="bumpAdditional('${id.replace(/'/g,"\\'")}', 1, event)">+</button>
+      </div>
+    </td>
+    <td class="p-3 text-center font-semibold text-gray-900 hidden sm:table-cell">
+      <input type="number" class="w-20 text-center border border-gray-300 rounded-md px-2 py-0.5 bg-gray-100"
+        value="${total}" name="total_quantity_${idUS}" readonly onclick="event.stopPropagation();"/>
+    </td>
+    <td class="p-3 text-center hidden sm:table-cell">
+      <input type="number" class="w-20 text-center border border-gray-300 rounded-md px-2 py-0.5 bg-gray-100"
+        value="${wpu}" name="weight_per_unit_${idUS}" readonly onclick="event.stopPropagation();"/>
+    </td>
+
+    <!-- MOBILE: qty -->
+    <td class="mob-qty p-3 text-center align-middle sm:hidden" onclick="rowClickOpenMobileModal(event, '${id.replace(/'/g,"\\'")}')">
+      <div class="flex items-center justify-center">
+        <div class="mobPickedWrap ${item.confirmed ? 'hidden' : ''} flex items-center">
+          <button type="button" class="ctrl rounded-md bg-red-100 text-red-600 font-bold"
+            onclick="bumpPicked('${id.replace(/'/g,"\\'")}', -1, event); event.stopPropagation();">−</button>
+          <input type="number" min="0" step="any"
+            class="text-center rounded-md border border-gray-300 px-1 py-1 mx-1"
+            data-mobile-picked="${idUS}" value="${item.picked}"
+            oninput="typedPicked('${id.replace(/'/g,"\\'")}', this.value); event.stopPropagation();"
+            onclick="event.stopPropagation();">
+          <button type="button" class="ctrl rounded-md bg-red-100 text-red-600 font-bold"
+            onclick="bumpPicked('${id.replace(/'/g,"\\'")}', 1, event); event.stopPropagation();">+</button>
+          <button type="button"
+            class="ctrl rounded-md ml-1 flex items-center justify-center font-bold ${item.confirmed?'bg-green-400 text-white cursor-default':'bg-green-100 text-green-600 hover:bg-green-300'}"
+            title="${item.confirmed?'Confirmed':'Confirm Picked Quantity'}" ${item.confirmed?'disabled':''}
+            onclick="confirmPicked('${id.replace(/'/g,"\\'")}', event); event.stopPropagation();">✓</button>
+        </div>
+
+        <div class="mobAdditionalWrap ${item.confirmed ? '' : 'hidden'} flex items-center">
+          <button type="button" class="ctrl rounded-md font-bold bg-yellow-100 text-yellow-600"
+            onclick="bumpAdditional('${id.replace(/'/g,"\\'")}', -1, event); event.stopPropagation();">−</button>
+          <input type="number" min="0" step="any"
+            class="text-center rounded-md border border-yellow-400 px-1 py-1 mx-1"
+            data-mobile-additional="${idUS}" value="${item.additional}"
+            oninput="typedAdditional('${id.replace(/'/g,"\\'")}', this.value); event.stopPropagation();"
+            onclick="event.stopPropagation();">
+          <button type="button" class="ctrl rounded-md font-bold bg-yellow-100 text-yellow-600"
+            onclick="bumpAdditional('${id.replace(/'/g,"\\'")}', 1, event); event.stopPropagation();">+</button>
+        </div>
+      </div>
+    </td>
+
+    <td class="mob-status p-3 text-center">
+      <select name="item_status_${idUS}" class="hidden">
+        <option value="">Select Item Status</option>
+        <option value="Item not available" ${item.status==='Item not available'?'selected':''}>Item not available</option>
+        <option value="Waiting for Shipment" ${item.status==='Waiting for Shipment'?'selected':''}>Waiting for Shipment</option>
+      </select>
+      <button type="button" class="status-btn text-gray-600 hover:text-red-600"
+        data-uid="${id.replace(/"/g,'&quot;')}" title="Set Status"
+        onclick="openStatusModal('${id.replace(/'/g,"\\'")}', event)">
+        <svg class="w-5 h-5 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
+        </svg>
+      </button>
+    </td>
+  </tr>`;
+}
+
+function buildPageArray(cur, total){
+  const pages = [];
+  if (total <= 5){ for (let i=1;i<=total;i++) pages.push(i); }
+  else if (cur <= 3){ pages.push(1,2,3,4,"...",total); }
+  else if (cur >= total-2){ pages.push(1,"...",total-3,total-2,total-1,total); }
+  else { pages.push(1,"...",cur-1,cur,cur+1,"...",total); }
+  return pages;
+}
+
+function buildTable() {
+  const tbody = $('#tblBody');
+  const totalPages = Math.max(1, Math.ceil(MODEL.items.length / prodRowsPerPage));
+  if (prodCurrentPage > totalPages) prodCurrentPage = totalPages;
+
+  const start = showAllRows ? 0 : (prodCurrentPage - 1) * prodRowsPerPage;
+  const slice = showAllRows ? MODEL.items : MODEL.items.slice(start, start + prodRowsPerPage);
+
+  tbody.innerHTML = slice.length ? slice.map(rowHTML).join('') :
+    `<tr><td colspan="9" class="p-4 text-center text-red-500">No items.</td></tr>`;
+
+  if (window.innerWidth < 640) { setupMobileReorderHooks(); }
+  updateProductPager(totalPages);
+}
+
+function updateProductPager(totalPages){
+  const prev = $('#prodPrev'), next = $('#prodNext'), pagesDiv = $('#prodPageNumbers'), pager = $('#productPager');
+  if (!prev || !next || !pagesDiv) return;
+  const hasRows = MODEL.items.length > 0;
+  pager.classList.toggle('hidden', showAllRows);
+  prev.disabled = !hasRows || prodCurrentPage <= 1;
+  next.disabled = !hasRows || prodCurrentPage >= totalPages;
+
+  pagesDiv.innerHTML = "";
+  if (!showAllRows) {
+    const nums = buildPageArray(prodCurrentPage, totalPages);
+    nums.forEach(n => {
+      if (n === "..."){ const span = document.createElement('span'); span.className = "px-2 py-1 text-gray-500"; span.textContent = "..."; pagesDiv.appendChild(span); }
+      else { const btn = document.createElement('button');
+        btn.className = `px-3 py-1.5 rounded-lg ${prodCurrentPage === n ? "bg-red-600 text-white" : "bg-gray-200 hover:bg-gray-300"}`;
+        btn.textContent = n;
+        btn.addEventListener('click', () => { prodCurrentPage = n; buildTable(); MODEL.items.forEach(i=>repaintRow(i.uid)); });
+        pagesDiv.appendChild(btn);
+      }
+    });
+  }
+}
+
+/* ------------------ Weight sort ------------------ */
+function sortByWeight(dir){
+  if (typeof dir === 'string') sortDir = dir;
+  MODEL.items.sort((a,b) => {
+    const diff = a.wpu - b.wpu;
+    return sortDir === 'desc' ? (diff===0 ? a.name.localeCompare(b.name) : -diff)
+                              : (diff===0 ? a.name.localeCompare(b.name) : diff);
+  });
+  userOrderActive = false; prodCurrentPage = 1;
+  buildTable(); MODEL.items.forEach(i => repaintRow(i.uid)); updateSortIcon();
+}
+function toggleSort(){
+  if (isReorderMode || SERVER.isFinalized) return;
+  sortDir = (sortDir === 'desc') ? 'asc' : 'desc';
+  sortByWeight();
+}
+function updateSortIcon(){
+  const ic = $('#sortIcon'), btn = $('#btnSort'); if (!ic || !btn) return;
+  ic.classList.toggle('rotate-180', sortDir === 'asc');
+  btn.title = sortDir === 'desc' ? 'Weight: High→Low' : 'Weight: Low→High';
+  btn.disabled = isReorderMode || SERVER.isFinalized;
+  btn.classList.toggle('opacity-50', isReorderMode || SERVER.isFinalized);
+  btn.classList.toggle('cursor-not-allowed', isReorderMode || SERVER.isFinalized);
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  const prev = $('#prodPrev'), next = $('#prodNext');
+  if (prev) prev.addEventListener('click', () => { if (prodCurrentPage > 1){ prodCurrentPage--; buildTable(); MODEL.items.forEach(i=>repaintRow(i.uid)); } });
+  if (next) next.addEventListener('click', () => {
+    const totalPages = Math.max(1, Math.ceil(MODEL.items.length / prodRowsPerPage));
+    if (prodCurrentPage < totalPages){ prodCurrentPage++; buildTable(); MODEL.items.forEach(i=>repaintRow(i.uid)); }
+  });
+  $('#btnSort')?.addEventListener('click', toggleSort);
+
+  $('#btnPack').addEventListener('click', computePackingPlan);
+  $('#btnDownloadPlan').addEventListener('click', () => {
+    if (!window._lastPackingPlan) return;
+    downloadJSON(window._lastPackingPlan.plan, `${SERVER.deliveryNote}_packing_plan.json`);
+  });
+  $('#btnPrintPlan').addEventListener('click', () => window.print());
+  $('#btnView3D').addEventListener('click', () => { window.open('pallet3d.html', '_blank'); });
+});
+
+/* ------------------ Header & row paint ------------------ */
+function refreshHeader() {
+  const totReq = MODEL.items.reduce((s,i)=> s + i.required, 0);
+  const totNW  = MODEL.items.reduce((s,i)=> s + (i.required * i.wpu), 0);
+  $('#hdrTotalQty').textContent = totReq;
+  $('#hdrTotalNW').textContent = totNW.toFixed(2);
+
+  const badge = $('#hdrStatusBadge');
+  const st = SERVER.statusText;
+  badge.textContent = st;
+  badge.classList.remove('bg-green-500','bg-yellow-500','bg-blue-500','text-black');
+  if (st === 'Completed') badge.classList.add('bg-green-500');
+  else if (st === 'Pending') { badge.classList.add('bg-yellow-500','text-black'); }
+  else badge.classList.add('bg-blue-500');
+}
+refreshHeader();
+
+function rowElsFor(uid) {
+  const tr = $$('tr[data-row]').find(r => r.dataset.uid === uid);
+  if (!tr) return {};
+  const idUS = sanitize(uid);
+  return {
+    tr,
+    requiredSpans: $$('[data-required]', tr),
+    pickedInput: $(`input[name="picked_quantity_${idUS}"]`, tr),
+    addInput: $(`input[name="additional_quantity_${idUS}"]`, tr),
+    addMinus: $(`[data-add-minus]`, tr),
+    addPlus: $(`[data-add-plus]`, tr),
+    totalInput: $(`input[name="total_quantity_${idUS}"]`, tr),
+    confirmBtn: $(`[data-confirm]`, tr),
+    mobPickedWrap: tr.querySelector('.mobPickedWrap'),
+    mobAdditionalWrap: tr.querySelector('.mobAdditionalWrap'),
+    mobPickedInput: tr.querySelector(`input[data-mobile-picked="${idUS}"]`),
+    mobAdditionalInput: tr.querySelector(`input[data-mobile-additional="${idUS}"]`)
+  };
+}
+
+function repaintRow(uid) {
+  const item = MODEL.byUID.get(uid); if (!item) return;
+  const els = rowElsFor(uid); if (!els.tr) return;
+
+  if (els.pickedInput) els.pickedInput.value = (item.picked || 0);
+  if (els.addInput) els.addInput.value = (item.additional || 0);
+  if (els.requiredSpans) els.requiredSpans.forEach(s => s.textContent = item.required);
+  if (els.totalInput) els.totalInput.value = (item.picked + item.additional).toFixed(2);
+
+  const canAdditional = item.confirmed === true;
+  if (els.addInput) {
+    els.addInput.disabled = !canAdditional || SERVER.isFinalized;
+    els.addInput.classList.toggle('bg-gray-100', !canAdditional || SERVER.isFinalized);
+    els.addInput.classList.toggle('cursor-not-allowed', !canAdditional || SERVER.isFinalized);
+    els.addInput.classList.toggle('border-yellow-400', canAdditional && !SERVER.isFinalized);
+  }
+  if (els.addMinus) {
+    els.addMinus.disabled = !canAdditional || SERVER.isFinalized;
+    els.addMinus.className = `w-8 h-8 rounded-md font-bold ${canAdditional && !SERVER.isFinalized ? 'bg-yellow-100 text-yellow-600' : 'bg-gray-200 text-gray-400'}`;
+  }
+  if (els.addPlus) {
+    els.addPlus.disabled = !canAdditional || SERVER.isFinalized;
+    els.addPlus.className = `w-8 h-8 rounded-md font-bold ${canAdditional && !SERVER.isFinalized ? 'bg-yellow-100 text-yellow-600' : 'bg-gray-200 text-gray-400'}`;
+  }
+  if (els.confirmBtn) {
+    els.confirmBtn.disabled = SERVER.isFinalized || item.confirmed;
+    els.confirmBtn.className = 'w-8 h-8 rounded-md flex items-center justify-center font-bold ' +
+      (item.confirmed ? 'bg-green-400 text-white cursor-default' :
+        (SERVER.isFinalized ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-green-100 text-green-600 hover:bg-green-300'));
+    els.confirmBtn.title = item.confirmed ? 'Confirmed' : (SERVER.isFinalized ? 'Finalized (read-only)' : 'Confirm Picked Quantity');
+  }
+
+  if (els.mobPickedWrap && els.mobAdditionalWrap) {
+    if (item.confirmed) { els.mobPickedWrap.classList.add('hidden'); els.mobAdditionalWrap.classList.remove('hidden'); }
+    else { els.mobPickedWrap.classList.remove('hidden'); els.mobAdditionalWrap.classList.add('hidden'); }
+  }
+  if (els.mobPickedInput) { els.mobPickedInput.value = (item.picked || 0); els.mobPickedInput.disabled = SERVER.isFinalized; }
+  if (els.mobAdditionalInput) { els.mobAdditionalInput.value = (item.additional || 0); els.mobAdditionalInput.disabled = SERVER.isFinalized || !item.confirmed; }
+
+  let rowColor = '';
+  if ((item.picked||0) > 0 && (item.picked||0) < item.required) rowColor = 'bg-blue-200';
+  if ((item.picked||0) === item.required && item.required > 0) rowColor = 'bg-green-200';
+  els.tr.classList.remove('bg-blue-200','bg-green-200'); if (rowColor) els.tr.classList.add(rowColor);
+}
+
+/* ------------------ Qty interactions ------------------ */
+function scheduleAutosave() {
+  if (SERVER.isFinalized) return;
+  clearTimeout(scheduleAutosave._t);
+  scheduleAutosave._t = setTimeout(() => {
+    const form = $('#detailsForm'); const fd = new FormData(form);
+    MODEL.items.forEach(it => {
+      const idUS = sanitize(it.uid);
+      fd.set(`picked_quantity_${idUS}`, it.picked);
+      fd.set(`additional_quantity_${idUS}`, it.additional);
+      fd.set(`total_quantity_${idUS}`, (it.picked + it.additional).toFixed(2));
+      fd.set(`item_status_${idUS}`, it.status || '');
+    });
+    const obj = {}; fd.forEach((v,k)=> obj[k]=v);
+    try { localStorage.setItem(`draft_${SERVER.deliveryNote}`, JSON.stringify(obj)); } catch {}
+  }, 300);
+}
+
+function typedPicked(uid, val) {
+  if (SERVER.isFinalized) return;
+  const item = MODEL.byUID.get(uid); if (!item) return;
+  const n = clamp(parseFloat(val || 0) || 0, 0, item.required);
+  item.picked = n; item.additional = 0; item.confirmed = false;
+  repaintRow(uid); scheduleAutosave();
+}
+function bumpPicked(uid, delta, ev) {
+  if (SERVER.isFinalized) return; if (ev) ev.stopPropagation();
+  const item = MODEL.byUID.get(uid); if (!item) return;
+  item.picked = clamp((item.picked||0) + delta, 0, item.required);
+  item.additional = 0; item.confirmed = false;
+  repaintRow(uid); scheduleAutosave();
+}
+function confirmPicked(uid, ev) {
+  if (SERVER.isFinalized) return; if (ev) ev.stopPropagation();
+  const item = MODEL.byUID.get(uid); if (!item) return;
+  if ((item.picked||0) <= 0) { toast('Picked Quantity must be greater than 0 before confirming', 'error'); return; }
+  item.confirmed = true; repaintRow(uid); toast('Picked Quantity confirmed'); scheduleAutosave();
+}
+function typedAdditional(uid, val) {
+  if (SERVER.isFinalized) return;
+  const item = MODEL.byUID.get(uid); if (!item) return;
+  if (!item.confirmed) { toast('Confirm Picked Quantity first', 'error'); repaintRow(uid); return; }
+  const n = Math.max(0, parseFloat(val || 0) || 0);
+  item.additional = n; repaintRow(uid); scheduleAutosave();
+}
+function bumpAdditional(uid, delta, ev) {
+  if (SERVER.isFinalized) return; if (ev) ev.stopPropagation();
+  const item = MODEL.byUID.get(uid); if (!item) return;
+  if (!item.confirmed) { toast('Confirm Picked Quantity first', 'error'); repaintRow(uid); return; }
+  item.additional = Math.max(0, (item.additional||0) + delta);
+  repaintRow(uid); scheduleAutosave();
+}
+window.bumpPicked = bumpPicked; window.typedPicked = typedPicked; window.confirmPicked = confirmPicked;
+window.bumpAdditional = bumpAdditional; window.typedAdditional = typedAdditional;
+
+/* ------------------ Status modal ------------------ */
+const STATUS_MODAL = { uid: null };
+function openStatusModal(uid, ev) {
+  if (suppressNextStatusClickForUID === uid) { suppressNextStatusClickForUID = null; if (ev){ ev.preventDefault(); ev.stopPropagation(); } return; }
+  const item = MODEL.byUID.get(uid); if (!item) return;
+  STATUS_MODAL.uid = uid;
+  $('#statusImg').src = item.img; $('#statusName').textContent = item.name; $('#statusCountry').textContent = item.country;
+  $('#statusSelect').value = item.status || '';
+  $('#statusSelect').disabled = SERVER.isFinalized; $('#statusSaveBtn').disabled = SERVER.isFinalized;
+  $('#statusModal').classList.add('modal-show');
+}
+function closeStatusModal(){ STATUS_MODAL.uid = null; $('#statusModal').classList.remove('modal-show'); }
+function saveStatusModal(){
+  if (!STATUS_MODAL.uid) return;
+  if (SERVER.isFinalized) { toast('Finalized — changes are read-only', 'error'); closeStatusModal(); return; }
+  const item = MODEL.byUID.get(STATUS_MODAL.uid);
+  item.status = $('#statusSelect').value || '';
+  const sel = document.querySelector(`select[name="item_status_${sanitize(STATUS_MODAL.uid)}"]`);
+  if (sel) sel.value = item.status;
+  toast('Status updated successfully'); scheduleAutosave(); closeStatusModal();
+}
+window.openStatusModal = openStatusModal; window.closeStatusModal = closeStatusModal; window.saveStatusModal = saveStatusModal;
+
+/* ------------------ Mobile modal ------------------ */
+function rowClickOpenMobileModal(ev, uid) {
+  if (window.innerWidth >= 640) return;
+  if (isReorderMode) return;
+  const tag = ev.target.tagName.toLowerCase();
+  if (tag === 'input' || tag === 'button' || tag === 'svg' || tag === 'path' || ev.target.closest('button')) return;
+
+  const item = MODEL.byUID.get(uid); if (!item) return;
+  MODEL.mobileUID = uid;
+  $('#mImg').src = item.img; $('#mName').textContent = item.name; $('#mCountry').textContent = item.country;
+  $('#mRequired').textContent = item.required; $('#mWPU').textContent = item.wpu;
+  $('#mPicked').value = item.picked || 0; $('#mAdditional').value = item.additional || 0;
+  $('#mTotal').textContent = (item.picked + item.additional).toFixed(2); $('#mStatus').value = item.status || '';
+
+  const confirmed = !!item.confirmed, ro = SERVER.isFinalized;
+  $('#mPicked').disabled = ro; $('#mMinus').disabled = ro; $('#mPlus').disabled = ro;
+  $('#mConfirm').disabled = ro || confirmed; $('#mAddMinus').disabled = ro || !confirmed;
+  $('#mAddPlus').disabled = ro || !confirmed; $('#mAdditional').disabled = ro || !confirmed;
+  $('#mStatus').disabled = true; $('#mSaveBtn').disabled = ro;
+
+  $('#mConfirm').className = 'w-12 h-10 rounded-lg flex items-center justify-center font-bold ml-2 ' +
+    (confirmed ? 'bg-green-400 text-white cursor-default' : (ro ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-green-100 text-green-600'));
+  $('#mobileModal').classList.add('modal-show');
+}
+window.rowClickOpenMobileModal = rowClickOpenMobileModal;
+function closeMobileModal(){ $('#mobileModal').classList.remove('modal-show'); MODEL.mobileUID = null; }
+window.closeMobileModal = closeMobileModal;
+
+function mUpdateTotals() {
+  const uid = MODEL.mobileUID; if (!uid) return; const item = MODEL.byUID.get(uid);
+  $('#mTotal').textContent = (item.picked + item.additional).toFixed(2);
+}
+function mBumpPicked(delta) {
+  if (SERVER.isFinalized) return; const uid = MODEL.mobileUID; if (!uid) return; const item = MODEL.byUID.get(uid);
+  item.picked = clamp((item.picked||0) + delta, 0, item.required);
+  item.additional = 0; item.confirmed = false;
+  $('#mPicked').value = item.picked; $('#mAdditional').value = 0;
+  $('#mConfirm').disabled = false;
+  $('#mConfirm').className = 'w-12 h-10 rounded-lg flex items-center justify-center font-bold ml-2 bg-green-100 text-green-600';
+  $('#mAddMinus').disabled = true; $('#mAddPlus').disabled = true; $('#mAdditional').disabled = true;
+  $('#mAddMinus').className = 'w-12 h-10 rounded-lg font-bold bg-gray-200 text-gray-400 cursor-not-allowed';
+  $('#mAddPlus').className = 'w-12 h-10 rounded-lg font-bold bg-gray-200 text-gray-400 cursor-not-allowed';
+  $('#mAdditional').className = 'w-full text-center rounded-md border border-gray-300 bg-gray-100 cursor-not-allowed px-2 py-1';
+  mUpdateTotals(); repaintRow(uid); scheduleAutosave();
+}
+function mTypedPicked(val) {
+  if (SERVER.isFinalized) return; const uid = MODEL.mobileUID; if (!uid) return; const item = MODEL.byUID.get(uid);
+  item.picked = clamp(parseFloat(val||0)||0, 0, item.required);
+  item.additional = 0; item.confirmed = false;
+  $('#mAdditional').value = 0;
+  $('#mConfirm').disabled = false;
+  $('#mConfirm').className = 'w-12 h-10 rounded-lg flex items-center justify-center font-bold ml-2 bg-green-100 text-green-600';
+  $('#mAddMinus').disabled = true; $('#mAddPlus').disabled = true; $('#mAdditional').disabled = true;
+  $('#mAddMinus').className = 'w-12 h-10 rounded-lg font-bold bg-gray-200 text-gray-400 cursor-not-allowed';
+  $('#mAddPlus').className = 'w-12 h-10 rounded-lg font-bold bg-gray-200 text-gray-400 cursor-not-allowed';
+  $('#mAdditional').className = 'w-full text-center rounded-md border border-gray-300 bg-gray-100 cursor-not-allowed px-2 py-1';
+  mUpdateTotals(); repaintRow(uid); scheduleAutosave();
+}
+function mConfirmPicked() {
+  if (SERVER.isFinalized) return; const uid = MODEL.mobileUID; if (!uid) return; const item = MODEL.byUID.get(uid);
+  if ((item.picked||0) <= 0) { toast('Picked Quantity must be greater than 0 before confirming', 'error'); return; }
+  item.confirmed = true;
+  $('#mConfirm').disabled = true;
+  $('#mConfirm').className = 'w-12 h-10 rounded-lg flex items-center justify-center font-bold ml-2 bg-green-400 text-white cursor-default';
+  $('#mAddMinus').disabled = false; $('#mAddPlus').disabled = false; $('#mAdditional').disabled = false;
+  $('#mAddMinus').className = 'w-12 h-10 rounded-lg font-bold bg-yellow-100 text-yellow-600';
+  $('#mAddPlus').className = 'w-12 h-10 rounded-lg font-bold bg-yellow-100 text-yellow-600';
+  $('#mAdditional').className = 'w-full text-center rounded-md border border-yellow-400 px-2 py-1';
+  repaintRow(uid); toast('Picked Quantity confirmed');
+}
+function mBumpAdditional(delta) {
+  if (SERVER.isFinalized) return; const uid = MODEL.mobileUID; if (!uid) return; const item = MODEL.byUID.get(uid);
+  if (!item.confirmed) { toast('Confirm Picked Quantity first', 'error'); return; }
+  item.additional = Math.max(0, (item.additional||0)+delta);
+  $('#mAdditional').value = item.additional; mUpdateTotals(); repaintRow(uid); scheduleAutosave();
+}
+function mTypedAdditional(val) {
+  if (SERVER.isFinalized) return; const uid = MODEL.mobileUID; if (!uid) return; const item = MODEL.byUID.get(uid);
+  if (!item.confirmed) { toast('Confirm Picked Quantity first', 'error'); $('#mAdditional').value = 0; return; }
+  item.additional = Math.max(0, parseFloat(val||0) || 0);
+  mUpdateTotals(); repaintRow(uid); scheduleAutosave();
+}
+function mSaveAndClose() {
+  if (SERVER.isFinalized) { toast('Finalized — changes are read-only', 'error'); closeMobileModal(); return; }
+  const uid = MODEL.mobileUID; if (!uid) { closeMobileModal(); return; }
+  const item = MODEL.byUID.get(uid);
+  const els = rowElsFor(uid);
+  if (els.totalInput) els.totalInput.value = (item.picked + item.additional).toFixed(2);
+  closeMobileModal(); scheduleAutosave();
+}
+window.mBumpPicked = mBumpPicked; window.mTypedPicked = mTypedPicked; window.mConfirmPicked = mConfirmPicked;
+window.mBumpAdditional = mBumpAdditional; window.mTypedAdditional = mTypedAdditional; window.mSaveAndClose = mSaveAndClose;
+
+/* ------------------ REORDER MODE (mobile long-press on status) ------------------ */
+function setupMobileReorderHooks(){
+  const btns = $$('#tblBody .status-btn');
+  btns.forEach(btn => {
+    if (btn.dataset.holdBound === '1') return;
+    btn.dataset.holdBound = '1';
+    let timer = null; const clear = () => { if (timer){ clearTimeout(timer); timer = null; } };
+    btn.addEventListener('touchstart', (ev) => {
+      if (SERVER.isFinalized || isReorderMode) return;
+      const uid = btn.dataset.uid;
+      timer = setTimeout(() => {
+        suppressNextStatusClickForUID = uid; prepReorder();
+        setTimeout(() => { suppressNextStatusClickForUID = null; }, 500);
+      }, 350);
+    }, {passive:true});
+    btn.addEventListener('touchmove', clear, {passive:true});
+    btn.addEventListener('touchend', clear, {passive:true});
+    btn.addEventListener('touchcancel', clear, {passive:true});
+  });
+}
+function prepReorder(){ if (SERVER.isFinalized) return; isReorderMode = true; showAllRows = true; updateSortIcon(); buildTable(); toast('Reorder mode: drag to move a row'); }
+
+/* ------------------ Packing – MaxRects/Guillotine per-layer ------------------ */
+function getPickedUnits(){
+  const units = MODEL.items.map(it => {
+    const qtyRaw = (it.picked + it.additional);
+    const qty = Math.max(0, Math.ceil(qtyRaw || 0));
+    const meta = it.meta || CATALOG_META[it.code] || { dims:{L:50,W:40,H:25}, fragility:2 };
+    return {
+      code: it.code,
+      name: it.name,
+      qty,
+      weight: it.wpu,
+      dims: meta.dims,
+      fragility: meta.specialTop ? 1 : (meta.fragility ?? 2),
+      allowedOrients: meta.allowedOrients || null // optional per-item restriction
+    };
+  }).filter(u => u.qty > 0);
+  return units;
+}
+
+// Orientation helpers
+function allOrientations(d){ // 6 orientations: footprint (w,l) + height (h)
+  const {L,W,H} = d;
+  return [
+    { w: W, l: L, h: H, o:'LW' },
+    { w: L, l: W, h: H, o:'WL' },
+    { w: W, l: H, h: L, o:'WH' },
+    { w: H, l: W, h: L, o:'HW' },
+    { w: L, l: H, h: W, o:'LH' },
+    { w: H, l: L, h: W, o:'HL' },
+  ];
+}
+function flatOrientations(d){ // keep H vertical
+  const {L,W,H} = d;
+  return [
+    { w: W, l: L, h: H, o:'LW' },
+    { w: L, l: W, h: H, o:'WL' },
+  ];
+}
+function orientationsFor(item, orientPolicy){
+  let list = orientPolicy==='all6' ? allOrientations(item.dims) : flatOrientations(item.dims);
+  if (item.allowedOrients && Array.isArray(item.allowedOrients)){
+    const set = new Set(item.allowedOrients);
+    list = list.filter(o => set.has(o.o));
+  }
+  return list;
+}
+
+// Guillotine split (no overlap), place at free.x,free.y
+function splitFreeRect(free, boxW, boxL){
+  const wRem = free.w - boxW;
+  const lRem = free.l - boxL;
+  // choose split by smaller leftover area
+  const splitVerticalWaste = (wRem * boxL) + (free.w * lRem);
+  const splitHorizontalWaste = (wRem * free.l) + (boxW * lRem);
+  const out = [];
+  if (splitVerticalWaste <= splitHorizontalWaste){
+    // Right strip, Bottom full
+    if (wRem > 0 && boxL > 0) out.push({x: free.x + boxW, y: free.y, w: wRem, l: boxL});
+    if (lRem > 0 && free.w > 0) out.push({x: free.x, y: free.y + boxL, w: free.w, l: lRem});
+  } else {
+    // Right full, Bottom strip
+    if (wRem > 0 && free.l > 0) out.push({x: free.x + boxW, y: free.y, w: wRem, l: free.l});
+    if (lRem > 0 && boxW > 0) out.push({x: free.x, y: free.y + boxL, w: boxW, l: lRem});
+  }
+  return out;
+}
+function pruneFreeRects(freeRects){
+  // remove contained rects & zero areas
+  const fr = freeRects.filter(r => r.w>0 && r.l>0);
+  for (let i = 0; i < fr.length; i++){
+    for (let j = i+1; j < fr.length; j++){
+      const A = fr[i], B = fr[j];
+      if (A && B){
+        // A inside B?
+        if (A.x >= B.x && A.y >= B.y && A.x + A.w <= B.x + B.w && A.y + A.l <= B.y + B.l) { fr.splice(i,1); i--; break; }
+        // B inside A?
+        else if (B.x >= A.x && B.y >= A.y && B.x + B.w <= A.x + A.w && B.y + B.l <= A.y + A.l) { fr.splice(j,1); j--; }
+      }
+    }
+  }
+  return fr;
+}
+
+function packOneLayer(boxes, W, L, orientPolicy){
+  // free space starts as one rectangle
+  let freeRects = [{x:0,y:0,w:W,l:L}];
+  const placements = [];
+  const placedIdx = new Set();
+  let layerHeight = 0;
+
+  // keep looping until nothing fits
+  while (true){
+    let best = null;
+    let bestIdx = -1;
+
+    for (let i = 0; i < boxes.length; i++){
+      if (placedIdx.has(i)) continue;
+      const item = boxes[i];
+      const orients = orientationsFor(item, orientPolicy);
+      for (const o of orients){
+        for (let frIdx = 0; frIdx < freeRects.length; frIdx++){
+          const fr = freeRects[frIdx];
+          if (o.w <= fr.w && o.l <= fr.l){
+            const areaLeft = (fr.w * fr.l) - (o.w * o.l);
+            const shortSide = Math.min(fr.w - o.w, fr.l - o.l);
+            const longSide  = Math.max(fr.w - o.w, fr.l - o.l);
+            const score = [areaLeft, shortSide, longSide, o.h]; // lexicographic
+            if (!best || (
+              score[0] < best.score[0] ||
+              (score[0] === best.score[0] && score[1] < best.score[1]) ||
+              (score[0] === best.score[0] && score[1] === best.score[1] && score[2] < best.score[2]) ||
+              (score[0] === best.score[0] && score[1] === best.score[1] && score[2] === best.score[2] && score[3] < best.score[3])
+            )){
+              best = { i, frIdx, o, x: fr.x, y: fr.y, score };
+              bestIdx = i;
+            }
+          }
+        }
+      }
+    }
+
+    if (!best) break; // nothing fits anymore
+
+    // place
+    const b = boxes[best.i];
+    placements.push({
+      code: b.code, name: b.name, fragility: b.fragility,
+      pos: { x: best.x, y: best.y, w: best.o.w, l: best.o.l, orientation: best.o.o },
+      size: { width: best.o.w, length: best.o.l, height: best.o.h }
+    });
+    layerHeight = Math.max(layerHeight, best.o.h);
+    placedIdx.add(best.i);
+
+    // split free rect used
+    const used = freeRects[best.frIdx];
+    const generated = splitFreeRect(used, best.o.w, best.o.l);
+    freeRects.splice(best.frIdx, 1, ...generated);
+    freeRects = pruneFreeRects(freeRects);
+  }
+
+  return {
+    placements,
+    layerHeight,
+    placedCount: placedIdx.size
+  };
+}
+
+function buildPackingPlan(units, container, options = {}) {
+  // expand units into individual boxes
+  const boxes = [];
+  units.forEach(u => { for(let i=0;i<u.qty;i++) boxes.push({ ...u }); });
+
+  // sort by fragility DESC then weight DESC then footprint area DESC
+  boxes.sort((a,b)=>{
+    const af = (a.dims.L*a.dims.W);
+    const bf = (b.dims.L*b.dims.W);
+    return (b.fragility - a.fragility) || ((b.weight||0)-(a.weight||0)) || (bf-af);
+  });
+
+  const contW = Math.max(1, container.widthCm|0), contL = Math.max(1, container.lengthCm|0), contH = container.heightCm|0;
+  const maxLayers = options.maxLayers ? parseInt(options.maxLayers,10) : undefined;
+  const orientPolicy = options.orientPolicy || 'all6';
+
+  const layers = [];
+  let usedHeight = 0;
+  let remaining = boxes.slice();
+
+  while (remaining.length && (!maxLayers || layers.length < maxLayers)){
+    // If height limit known and nothing can fit with at least min height leftover, we'll try once and then stop if exceeds
+    const res = packOneLayer(remaining, contW, contL, orientPolicy);
+    if (!res.placements.length) break; // footprint too small for next item
+
+    // Check height feasibility
+    if (contH && (usedHeight + res.layerHeight) > contH){
+      // Can't add this layer without breaking height → stop
+      break;
+    }
+
+    layers.push({ placements: res.placements, height: res.layerHeight });
+    usedHeight += res.layerHeight;
+
+    // Remove placed boxes
+    let toRemove = res.placements.length;
+    const newRemaining = [];
+    // remove by code/name match first N
+    const placedKeys = res.placements.map(p => p.code + '|' + p.name);
+    const counter = {};
+    placedKeys.forEach(k => counter[k]=(counter[k]||0)+1);
+
+    for (const bx of remaining){
+      const k = bx.code + '|' + bx.name;
+      if (counter[k] > 0){ counter[k]--; continue; }
+      newRemaining.push(bx);
+    }
+    remaining = newRemaining;
+  }
+
+  const warnings = [];
+  if (remaining.length > 0){
+    warnings.push(`Container capacity exceeded: ${remaining.length} box(es) not packed.`);
+  }
+  if (contH && usedHeight > contH){
+    warnings.push(`Used stack height ${usedHeight} cm exceeds container height ${contH} cm.`);
+  }
+
+  // fragile-under-heavy warning
+  let fragileUnderHeavy=false;
+  for (let i=0;i<layers.length-1;i++){
+    const low = layers[i].placements.map(p=>p.fragility);
+    const up  = layers[i+1].placements.map(p=>p.fragility);
+    if (low.length && up.length && Math.max(...up)>Math.min(...low)){ fragileUnderHeavy=true; break; }
+  }
+  if (fragileUnderHeavy) warnings.push('Fragile items may be under heavier ones — consider cushioning or reordering.');
+
+  // Labels
+  layers.forEach(ly=>{
+    const frags = ly.placements.map(p=>p.fragility);
+    if (!frags.length){ ly.groupLabel='(empty)'; return; }
+    if (frags.every(f=>f===3)) ly.groupLabel='Hard Items';
+    else if (frags.every(f=>f===2)) ly.groupLabel='Medium Items';
+    else if (frags.every(f=>f===1)) ly.groupLabel='Fragile Items';
+    else {
+      const t=[]; if (frags.some(f=>f===3)) t.push('Hard'); if (frags.some(f=>f===2)) t.push('Medium'); if (frags.some(f=>f===1)) t.push('Fragile');
+      ly.groupLabel=`Mixed (${t.join('+')})`;
+    }
+  });
+
+  return {
+    container,
+    summary:{
+      totalBoxes: boxes.length - remaining.length,
+      layers: layers.length,
+      usedHeightCm: usedHeight,
+      heightOk: !contH || usedHeight<=contH
+    },
+    layers,
+    warnings
+  };
+}
+
+/* ---------- Render packing output ---------- */
+function renderPackingPlan(plan){
+  const out = $('#packingOutput'); const actions = $('#packingActions');
+  if (!plan){ out.innerHTML=''; actions.classList.add('hidden'); return; }
+
+  const layerHtml = plan.layers.map((ly, idx) => {
+    const items = ly.placements.map(p =>
+      `<li class="flex items-center justify-between"><span>${p.name}</span><span class="text-gray-500">(${p.size.width}×${p.size.length}×${p.size.height}cm, ${p.pos.orientation})</span></li>`
+    ).join('');
+    return `
+      <div class="rounded-xl border border-gray-200 p-4 bg-white/70">
+        <div class="font-semibold text-gray-800">Layer ${idx+1} • <span class="text-xs font-normal text-gray-500">${ly.groupLabel||''}</span></div>
+        <div class="text-xs text-gray-500 mb-2">Layer height: ${ly.height} cm</div>
+        <ul class="space-y-1">${items || '<li class="text-gray-500">No items</li>'}</ul>
+      </div>
+    `;
+  }).join('');
+
+  const warnHtml = plan.warnings.length ? `
+    <div class="rounded-lg bg-yellow-50 border border-yellow-200 text-yellow-900 p-3">
+      <div class="font-semibold mb-1">Advisories</div>
+      <ul class="list-disc ml-5">${plan.warnings.map(w=>`<li>${w}</li>`).join('')}</ul>
+    </div>
+  ` : '';
+
+  out.innerHTML = `
+    <div class="grid md:grid-cols-3 gap-4">
+      <div class="rounded-xl border border-gray-200 p-4 bg-white/70">
+        <div class="font-semibold text-gray-800">Container</div>
+        <div class="text-sm text-gray-700 mt-1">
+          Type: ${plan.container.type}<br/>
+          L×W×H: ${plan.container.lengthCm}×${plan.container.widthCm}×${plan.container.heightCm} cm<br/>
+          Direction: ${plan.container.align==='RL' ? 'Right→Left' : 'Left→Right'}<br/>
+          Orientation: ${plan.container.orientPolicy==='flat' ? 'Flat only' : 'All rotations'}
+        </div>
+      </div>
+      <div class="rounded-xl border border-gray-200 p-4 bg-white/70">
+        <div class="font-semibold text-gray-800">Summary</div>
+        <div class="text-sm text-gray-700 mt-1">
+          Packed boxes: ${plan.summary.totalBoxes}<br/>
+          Layers: ${plan.summary.layers}<br/>
+          Used height: ${plan.summary.usedHeightCm.toFixed(1)} cm ${plan.summary.heightOk ? '' : '<span class="text-red-600">(exceeds)</span>'}
+        </div>
+      </div>
+      <div class="rounded-xl border border-gray-200 p-4 bg-white/70">
+        <div class="font-semibold text-gray-800">Layer Order</div>
+        <div class="text-sm text-gray-700 mt-1">
+          Bottom → Top: Hard → Medium → Fragile (mix allowed in a layer)
+        </div>
+      </div>
+    </div>
+    <div class="mt-4 grid gap-3">${layerHtml}</div>
+    <div class="mt-4">${warnHtml}</div>
+  `;
+  actions.classList.remove('hidden');
+}
+
+function computePackingPlan(){
+  const L = ftToCm($('#contLenFt').value || 0);
+  const W = ftToCm($('#contWidFt').value || 0);
+  const H = ftToCm($('#contHeiFt').value || 0);
+  const type = $('#contType').value || 'pallet';
+  const maxLayers = $('#maxLayers').value ? parseInt($('#maxLayers').value, 10) : undefined;
+  const orientPolicy = $('#orientPolicy').value || 'all6';
+  const align = $('#packAlign').value || 'LR';
+
+  if (L<=0 || W<=0 || H<=0) { toast('Please enter a valid container size (all dimensions > 0)', 'error'); return; }
+
+  const units = getPickedUnits();
+  if (!units.length){ toast('No picked quantities to pack. Increase Picked (and Confirm/Additional if needed).', 'error'); return; }
+
+  const plan = buildPackingPlan(units, {
+    type, lengthCm: Math.round(L), widthCm: Math.round(W), heightCm: Math.round(H),
+    align, orientPolicy
+  }, { maxLayers, orientPolicy });
+
+  // mirror X positions for RL display
+  if (plan.container.align === 'RL'){
+    const Wc = plan.container.widthCm;
+    plan.layers.forEach(ly => {
+      ly.placements.forEach(p => {
+        p.pos.x = Wc - (p.pos.x + p.size.width);
+      });
+    });
+  }
+
+  window._lastPackingPlan = { header: getFormSnapshot().header, plan };
+  try { localStorage.setItem('lastPlan', JSON.stringify(plan)); } catch {}
+  renderPackingPlan(plan);
+}
+
+/* ------------------ Finalize ------------------ */
+function getFormSnapshot() {
+  const form = $('#detailsForm'); const fd = new FormData(form);
+  MODEL.items.forEach(it => {
+    const idUS = sanitize(it.uid);
+    fd.set(`picked_quantity_${idUS}`, it.picked);
+    fd.set(`additional_quantity_${idUS}`, it.additional);
+    fd.set(`total_quantity_${idUS}`, (it.picked + it.additional).toFixed(2));
+    fd.set(`item_status_${idUS}`, it.status || '');
+  });
+  const items = MODEL.items.map(it => ({
+    code: it.code, name: it.name, country: it.country, required: it.required, wpu: it.wpu,
+    picked: it.picked, additional: it.additional, total: it.picked + it.additional, status: it.status || ''
+  }));
+  const header = {
+    delivery_note: SERVER.deliveryNote,
+    customer: $('#hdrCustomer').textContent,
+    sales_order: SERVER.salesOrderRef || null,
+    status: SERVER.statusText,
+    picking_date: $('#hdrDate').textContent
+  };
+  return { header, items };
+}
+function downloadJSON(obj, filename){
+  const blob = new Blob([JSON.stringify(obj,null,2)], {type:'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url; a.download = filename; document.body.appendChild(a); a.click();
+  a.remove(); URL.revokeObjectURL(url);
+}
+
+function disableEditingAfterFinalize(){
+  $$('#tblBody input').forEach(el => { el.disabled = true; });
+  $$('#tblBody button').forEach(btn => {
+    const inStatus = btn.closest('.mob-status'); if (inStatus) return;
+    btn.disabled = true;
+  });
+  const btnSort = $('#btnSort'); if (btnSort){ btnSort.disabled = true; btnSort.classList.add('opacity-50','cursor-not-allowed'); }
+  updateSortIcon();
+}
+
+$('#finalizeBtn').addEventListener('click', () => {
+  isReorderMode = false; showAllRows = false; updateSortIcon();
+  if (!userOrderActive) {
+    MODEL.items.sort((a,b) => {
+      const at = (a.picked + a.additional) * a.wpu;
+      const bt = (b.picked + b.additional) * b.wpu;
+      return bt - at || a.name.localeCompare(b.name);
+    });
+  }
+  const snap = getFormSnapshot();
+  downloadJSON(snap, `${SERVER.deliveryNote}_final.json`);
+  SERVER.isFinalized = true;
+  disableEditingAfterFinalize();
+  $('#finalizeBtn').classList.add('hidden');
+  $('#finalizedPill').classList.remove('hidden-important');
+  $('#finalizedNotice').classList.remove('hidden');
+  buildTable(); MODEL.items.forEach(i=>repaintRow(i.uid));
+  toast('Finalized and downloaded JSON');
+});
+
+(function applyFinalized(){
+  if (!SERVER.isFinalized) return;
+  disableEditingAfterFinalize();
+  $('#finalizeBtn').classList.add('hidden');
+  $('#finalizedPill').classList.remove('hidden-important');
+  $('#finalizedNotice').classList.remove('hidden');
+})();
+
+/* ------------------ Print ------------------ */
+function downloadPDF(doctype, record_id, format) { window.print(); }
+window.downloadPDF = downloadPDF;
+
+sortByWeight('desc');
+buildTable();
+MODEL.items.forEach(i => repaintRow(i.uid));
+</script>
+</body>
+</html>

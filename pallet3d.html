@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Packing Plan – 3D View</title>
+
+  <!-- Three.js + OrbitControls via import map -->
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://unpkg.com/three@0.149.0/build/three.module.js",
+        "three/addons/": "https://unpkg.com/three@0.149.0/examples/jsm/"
+      }
+    }
+  </script>
+  <style>
+    html, body { margin:0; height:100%; overflow:hidden; }
+    #legend {
+      position:absolute; top:10px; left:10px;
+      background:rgba(255,255,255,0.9); padding:8px 10px; border-radius:8px;
+      font:14px/1.2 system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      box-shadow:0 6px 18px rgba(0,0,0,.15);
+      max-width: 50vw;
+    }
+    #legend .row { display:flex; align-items:center; gap:6px; margin-top:4px; white-space:nowrap; }
+    #legend .swatch { width:14px; height:14px; border:1px solid #333; border-radius:3px; display:inline-block; }
+    #hint {
+      position:absolute; bottom:12px; left:12px; color:#111; background:rgba(255,255,255,.9);
+      padding:6px 10px; border-radius:6px; font:12px system-ui;
+      box-shadow:0 6px 18px rgba(0,0,0,.12);
+    }
+  </style>
+</head>
+<body>
+  <canvas id="canvas3d"></canvas>
+  <div id="legend"><strong>Legend</strong></div>
+  <div id="hint">Drag = rotate · Scroll = zoom · Right-drag = pan</div>
+
+  <script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+    const canvas = document.getElementById('canvas3d');
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setSize(window.innerWidth, window.innerHeight);
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0xf6f7fb);
+
+    const camera = new THREE.PerspectiveCamera(55, window.innerWidth/window.innerHeight, 0.1, 100000);
+    const controls = new OrbitControls(camera, renderer.domElement);
+
+    // Lights
+    const keyLight = new THREE.DirectionalLight(0xffffff, 0.9);
+    keyLight.position.set(1,2,1);
+    scene.add(keyLight);
+    scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+
+    // Load plan from localStorage
+    let plan;
+    try { plan = JSON.parse(localStorage.getItem('lastPlan')); } catch {}
+    if (!plan || !plan.layers || !plan.container) {
+      const div = document.createElement('div');
+      div.textContent = 'No packing plan in storage. Generate from index.html first.';
+      Object.assign(div.style,{
+        position:'absolute', inset:'0', display:'grid', placeItems:'center',
+        font:'16px system-ui', color:'#b91c1c'
+      });
+      document.body.appendChild(div);
+    } else {
+      const { widthCm:W, lengthCm:L, heightCm:H } = plan.container;
+
+      // Ground / base helpers
+      const grid = new THREE.GridHelper(Math.max(W,L)+200, 20);
+      grid.position.y = 0;
+      scene.add(grid);
+
+      // Container wireframe
+      if (W && L && H){
+        const g = new THREE.BoxGeometry(W, H, L);
+        const e = new THREE.EdgesGeometry(g);
+        const m = new THREE.LineBasicMaterial({ color: 0x222222 });
+        const wire = new THREE.LineSegments(e, m);
+        wire.position.set(W/2, H/2, L/2);
+        scene.add(wire);
+      }
+
+      // Camera target
+      const usedHeight = plan.layers.reduce((s,ly)=>s+ly.height, 0);
+      camera.position.set(-W*0.9, Math.max(usedHeight, H)*1.2 + 150, -L*0.9);
+      controls.target.set(W/2, (Math.max(usedHeight, 1))/2, L/2);
+      controls.update();
+
+      // Color per code
+      const codes = [];
+      plan.layers.forEach(ly => ly.placements.forEach(p => { if (!codes.includes(p.code)) codes.push(p.code); }));
+      const colorFor = (idx, total) => {
+        const hue = (idx * 360 / Math.max(total,1)) % 360;
+        const color = new THREE.Color();
+        color.setHSL(hue/360, 0.65, 0.58);
+        return color;
+      };
+      const codeColor = {};
+      const legend = document.getElementById('legend');
+      codes.forEach((code,i)=>{
+        codeColor[code] = colorFor(i, codes.length);
+        const row = document.createElement('div');
+        row.className='row';
+        const sw = document.createElement('span');
+        sw.className='swatch';
+        sw.style.background = `hsl(${(i*360/Math.max(codes.length,1))%360} 65% 58%)`;
+        row.appendChild(sw);
+        row.append(code);
+        legend.appendChild(row);
+      });
+
+      // Build boxes
+      let currentY = 0;
+      plan.layers.forEach((layer, li) => {
+        layer.placements.forEach(p => {
+          const { width, length, height } = p.size;
+          const geom = new THREE.BoxGeometry(width, height, length);
+          const mat  = new THREE.MeshLambertMaterial({ color: codeColor[p.code], transparent:true, opacity:0.92 });
+          const mesh = new THREE.Mesh(geom, mat);
+          mesh.position.set(p.pos.x + width/2, currentY + height/2, p.pos.y + length/2);
+          // Store info for tooltip
+          mesh.userData = {
+            label: `${p.name}\n${width}×${length}×${height} cm • ${p.pos.orientation}`
+          };
+          scene.add(mesh);
+
+          // Edge outline
+          const edges = new THREE.EdgesGeometry(geom);
+          const line = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0x111111, linewidth:1 }));
+          line.position.copy(mesh.position);
+          scene.add(line);
+        });
+        currentY += layer.height;
+      });
+
+      // Tooltip (simple)
+      const tooltip = document.createElement('div');
+      Object.assign(tooltip.style,{
+        position:'absolute', padding:'6px 8px', background:'rgba(0,0,0,.75)', color:'#fff',
+        borderRadius:'6px', font:'12px system-ui', pointerEvents:'none', transform:'translate(8px, -8px)',
+        whiteSpace:'pre', display:'none'
+      });
+      document.body.appendChild(tooltip);
+
+      const raycaster = new THREE.Raycaster();
+      const mouse = new THREE.Vector2();
+      function onMove(ev){
+        const rect = renderer.domElement.getBoundingClientRect();
+        mouse.x = ((ev.clientX - rect.left) / rect.width) * 2 - 1;
+        mouse.y = -((ev.clientY - rect.top) / rect.height) * 2 + 1;
+        raycaster.setFromCamera(mouse, camera);
+        const intersects = raycaster.intersectObjects(scene.children, false);
+        const first = intersects.find(i => i.object.isMesh && i.object.userData && i.object.userData.label);
+        if (first){
+          tooltip.style.left = ev.clientX + 'px';
+          tooltip.style.top  = ev.clientY + 'px';
+          tooltip.textContent = first.object.userData.label;
+          tooltip.style.display = 'block';
+        } else {
+          tooltip.style.display = 'none';
+        }
+      }
+      window.addEventListener('mousemove', onMove);
+    }
+
+    function animate(){ requestAnimationFrame(animate); renderer.render(scene, camera); }
+    animate();
+
+    window.addEventListener('resize', ()=>{
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+  </script>
+</body>
+</html>
